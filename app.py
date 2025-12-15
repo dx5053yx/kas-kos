@@ -5,159 +5,216 @@ from datetime import datetime
 import time
 
 # --- KONFIGURASI HALAMAN ---
-st.set_page_config(page_title="Sistem Kas Pro", page_icon="🔐")
+st.set_page_config(page_title="Sistem Kas Kosan", page_icon="🏦", layout="wide")
 
 # --- KONEKSI MONGODB ---
 @st.cache_resource
 def init_connection():
     return MongoClient(st.secrets["mongo"]["uri"])
 
-client = init_connection()
-db = client.kas_kos_pro  # Kita pakai nama database baru biar bersih
-col_users = db.users
-col_transaksi = db.transaksi
+try:
+    client = init_connection()
+    db = client.kas_kos_pro 
+    col_users = db.users
+    col_transaksi = db.transaksi
+except Exception as e:
+    st.error(f"Koneksi Database Gagal: {e}")
+    st.stop()
 
-# --- FUNGSI AUTHENTICATION (LOGIN) ---
+# --- KONFIGURASI TARGET ---
+TARGET_PER_ORANG = 50000  # Ubah sesuai kesepakatan
+
+# --- FUNGSI AUTH ---
 def check_login(username, password):
-    user = col_users.find_one({"username": username, "password": password})
-    return user
-
-# --- INISIALISASI USER (Hanya dijalankan sekali di awal) ---
-# Biar database user gak kosong, kita buat akun default otomatis
-if col_users.count_documents({}) == 0:
-    users_awal = [
-        {"username": "Aqil", "password": "123", "role": "admin"},
-        {"username": "Daffa", "password": "123", "role": "member"},
-        {"username": "Naufal", "password": "123", "role": "member"},
-        {"username": "Budi", "password": "123", "role": "member"},
-        {"username": "Siti", "password": "123", "role": "member"},
-    ]
-    col_users.insert_many(users_awal)
-    print("User default berhasil dibuat!")
+    return col_users.find_one({"username": username, "password": password})
 
 # --- HALAMAN LOGIN ---
 def login_page():
-    st.title("🔐 Login Kas Kosan")
+    st.markdown("<h1 style='text-align: center;'>🔐 Login Bendahara</h1>", unsafe_allow_html=True)
     
-    with st.form("login_form"):
-        # Dropdown biar gak typo nulis nama
-        users_db = col_users.distinct("username")
-        username = st.selectbox("Pilih Nama Kamu", users_db)
-        password = st.text_input("Password", type="password")
-        submit = st.form_submit_button("Masuk")
-        
-        if submit:
-            user = check_login(username, password)
-            if user:
-                # SIMPAN SESI LOGIN
-                st.session_state['logged_in'] = True
-                st.session_state['username'] = user['username']
-                st.session_state['role'] = user['role']
-                st.success("Login Berhasil!")
-                time.sleep(1)
-                st.rerun()
-            else:
-                st.error("Password salah bro!")
+    col1, col2, col3 = st.columns([1,2,1])
+    with col2:
+        with st.form("login_form"):
+            users_db = col_users.distinct("username")
+            username = st.selectbox("Siapa kamu?", users_db)
+            password = st.text_input("Password", type="password")
+            submit = st.form_submit_button("Masuk", use_container_width=True)
+            
+            if submit:
+                user = check_login(username, password)
+                if user:
+                    st.session_state['logged_in'] = True
+                    st.session_state['username'] = user['username']
+                    st.session_state['role'] = user['role']
+                    st.success("Akses Diterima!")
+                    time.sleep(0.5)
+                    st.rerun()
+                else:
+                    st.error("Password salah!")
 
 # --- HALAMAN UTAMA (DASHBOARD) ---
 def dashboard():
     user_now = st.session_state['username']
     
-    # Sidebar untuk Menu & Logout
-    st.sidebar.title(f"Halo, {user_now} 👋")
-    menu = st.sidebar.radio("Menu", ["Dashboard Kas", "Ganti Password"])
+    # --- SIDEBAR MENU ---
+    st.sidebar.title(f"Hai, {user_now} 👋")
+    st.sidebar.markdown("---")
     
-    if st.sidebar.button("Logout"):
+    # Opsi Menu Baru
+    menu = st.sidebar.radio(
+        "Menu Utama", 
+        ["📝 Input Bayar", "👤 Riwayat Saya", "📅 Laporan Bulan Ini", "💰 Total Kas Semesta", "⚙️ Ganti Password"]
+    )
+    
+    st.sidebar.markdown("---")
+    if st.sidebar.button("Logout", use_container_width=True):
         st.session_state['logged_in'] = False
         st.rerun()
 
-    # LOGIKA DASHBOARD
-    if menu == "Dashboard Kas":
-        st.title("💰 Dashboard Kas Bulanan")
+    # --- LOGIKA PER MENU ---
+
+    # 1. INPUT PEMBAYARAN
+    if menu == "📝 Input Bayar":
+        st.title("📝 Input Pembayaran Kas")
+        st.info("Form ini untuk mencatat uang yang masuk.")
         
-        # 1. FILTER WAKTU (Otomatis deteksi bulan ini)
-        bulan_ini = datetime.now().strftime("%Y-%m") # Contoh: "2023-12"
-        st.info(f"📅 Periode Aktif: **{bulan_ini}**")
-
-        # Target Kas (Bisa dihardcode atau ambil dari db)
-        TARGET_PER_ORANG = 50000 
-        
-        # 2. INPUT BAYAR
-        with st.expander("💸 Bayar Kas Disini", expanded=True):
-            with st.form("bayar"):
-                nominal = st.number_input("Jumlah Bayar", min_value=10000, step=5000)
-                submit_bayar = st.form_submit_button("Kirim Uang")
-                
-                if submit_bayar:
-                    data = {
-                        "username": user_now,
-                        "nominal": nominal,
-                        "tanggal": datetime.now(),      # Untuk sorting detail
-                        "periode": bulan_ini            # KUNCI: Untuk filtering bulanan
-                    }
-                    col_transaksi.insert_one(data)
-                    st.success("Berhasil bayar! Bendahara senang.")
-                    time.sleep(1)
-                    st.rerun()
-
-        st.markdown("---")
-
-        # 3. LOGIKA REKAP (AGGREGATION)
-        # Ambil semua data periode ini
-        semua_transaksi = list(col_transaksi.find({"periode": bulan_ini}))
-        df = pd.DataFrame(semua_transaksi)
-
-        col1, col2 = st.columns(2)
-        
-        # Hitung Total Kas Bulan Ini (Semua Anak)
-        if not df.empty:
-            total_bulan_ini = df['nominal'].sum()
-            # Hitung Total Kas Pribadi (User yg login)
-            df_pribadi = df[df['username'] == user_now]
-            total_pribadi = df_pribadi['nominal'].sum()
-        else:
-            total_bulan_ini = 0
-            total_pribadi = 0
-
-        with col1:
-            st.metric("Total Terkumpul (Semua)", f"Rp {total_bulan_ini:,.0f}")
-        with col2:
-            # Logic Status Lunas/Belum
-            kurang = TARGET_PER_ORANG - total_pribadi
-            if kurang <= 0:
-                st.metric("Status Kamu", "LUNAS ✅", delta="Aman")
-            else:
-                st.metric("Status Kamu", f"Kurang Rp {kurang:,.0f}", delta="-Belum Lunas", delta_color="inverse")
-
-        # 4. TABEL PEMBAYARAN SEMUA ORANG
-        st.subheader("Siapa yang sudah bayar?")
-        if not df.empty:
-            # Grouping biar kelihatan per anak totalnya berapa
-            rekap_anak = df.groupby("username")["nominal"].sum().reset_index()
-            rekap_anak['Status'] = rekap_anak['nominal'].apply(lambda x: "✅ Lunas" if x >= TARGET_PER_ORANG else "❌ Belum")
-            st.dataframe(rekap_anak, use_container_width=True)
+        with st.form("form_input"):
+            nominal = st.number_input("Nominal (Rp)", min_value=10000, step=5000)
+            keterangan = st.text_input("Catatan (Opsional)", placeholder="Contoh: Bayar tunggakan bulan lalu")
+            submitted = st.form_submit_button("Kirim Uang 💸", use_container_width=True)
             
-            with st.expander("Lihat Detail Riwayat Transaksi"):
-                st.dataframe(df[['tanggal', 'username', 'nominal']].sort_values('tanggal', ascending=False))
+            if submitted:
+                bulan_ini = datetime.now().strftime("%Y-%m")
+                data = {
+                    "username": user_now,
+                    "nominal": nominal,
+                    "keterangan": keterangan,
+                    "tanggal": datetime.now(),
+                    "periode": bulan_ini
+                }
+                col_transaksi.insert_one(data)
+                st.balloons()
+                st.success(f"Mantap! Rp {nominal:,.0f} berhasil disimpan.")
+
+    # 2. RIWAYAT SAYA
+    elif menu == "👤 Riwayat Saya":
+        st.title("👤 Riwayat Transaksi Saya")
+        
+        # Ambil data HANYA milik user yang login
+        data_saya = list(col_transaksi.find({"username": user_now}))
+        
+        if data_saya:
+            df = pd.DataFrame(data_saya)
+            # Hapus kolom yang tidak perlu dilihat user
+            if '_id' in df.columns: df = df.drop(columns=['_id'])
+            
+            total_setor = df['nominal'].sum()
+            st.metric("Total Uang yang Pernah Kamu Setor", f"Rp {total_setor:,.0f}")
+            
+            st.subheader("Rincian:")
+            # Tampilkan tabel
+            st.dataframe(
+                df[['tanggal', 'nominal', 'keterangan']].sort_values('tanggal', ascending=False),
+                use_container_width=True
+            )
         else:
-            st.warning("Belum ada data bulan ini.")
+            st.warning("Kamu belum pernah bayar kas sama sekali. Parah!")
 
-    # LOGIKA GANTI PASSWORD
-    elif menu == "Ganti Password":
-        st.subheader("🔐 Ganti Password")
-        pass_baru = st.text_input("Password Baru", type="password")
-        if st.button("Simpan Password Baru"):
-            if len(pass_baru) > 0:
-                col_users.update_one(
-                    {"username": user_now},
-                    {"$set": {"password": pass_baru}}
-                )
-                st.success("Password berhasil diganti! Jangan lupa ya.")
+    # 3. LAPORAN BULAN INI (TARGET & REALISASI)
+    elif menu == "📅 Laporan Bulan Ini":
+        bulan_ini_str = datetime.now().strftime("%B %Y") # Contoh: December 2025
+        kode_bulan = datetime.now().strftime("%Y-%m")
+        
+        st.title(f"📅 Laporan: {bulan_ini_str}")
+        
+        # Ambil data bulan ini
+        data_bulan = list(col_transaksi.find({"periode": kode_bulan}))
+        df = pd.DataFrame(data_bulan)
+        
+        # Hitung Target
+        jumlah_anak = col_users.count_documents({}) # Hitung jumlah user otomatis
+        target_total = jumlah_anak * TARGET_PER_ORANG
+        
+        if not df.empty:
+            realisasi_total = df['nominal'].sum()
+        else:
+            realisasi_total = 0
+            
+        # Tampilkan Metric Besar
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Target Bulan Ini", f"Rp {target_total:,.0f}", help=f"{jumlah_anak} orang x Rp {TARGET_PER_ORANG}")
+        col2.metric("Terkumpul", f"Rp {realisasi_total:,.0f}")
+        col3.metric("Sisa Target", f"Rp {max(0, target_total - realisasi_total):,.0f}")
+        
+        # Progress Bar
+        persen = min(realisasi_total / target_total, 1.0) if target_total > 0 else 0
+        st.progress(persen, text=f"Progress Terkumpul: {int(persen*100)}%")
+        
+        st.markdown("---")
+        st.subheader("📋 Siapa yang belum lunas?")
+        
+        # Logic rumit dikit: Cek status per anak
+        all_users = col_users.distinct("username")
+        status_list = []
+        
+        for u in all_users:
+            # Berapa yang si U ini bayar bulan ini?
+            if not df.empty:
+                bayar_u = df[df['username'] == u]['nominal'].sum()
             else:
-                st.error("Password gak boleh kosong.")
+                bayar_u = 0
+            
+            status = "✅ LUNAS" if bayar_u >= TARGET_PER_ORANG else "❌ KURANG"
+            kekurangan = max(0, TARGET_PER_ORANG - bayar_u)
+            
+            status_list.append({
+                "Nama": u,
+                "Sudah Bayar": f"Rp {bayar_u:,.0f}",
+                "Kekurangan": f"Rp {kekurangan:,.0f}",
+                "Status": status
+            })
+            
+        st.dataframe(pd.DataFrame(status_list), use_container_width=True)
 
-# --- ROUTING HALAMAN ---
-# Cek apakah user sudah login atau belum
+    # 4. TOTAL KAS SEMESTA (KESELURUHAN)
+    elif menu == "💰 Total Kas Semesta":
+        st.title("💰 Brankas Utama")
+        st.caption("Total akumulasi uang kas dari awal dunia terbentuk.")
+        
+        all_data = list(col_transaksi.find())
+        if all_data:
+            df_all = pd.DataFrame(all_data)
+            grand_total = df_all['nominal'].sum()
+            
+            # Tampilan Angka Besar
+            st.markdown(f"<h1 style='font-size: 72px; color: #4CAF50;'>Rp {grand_total:,.0f}</h1>", unsafe_allow_html=True)
+            
+            st.markdown("### 📈 Grafik Pertumbuhan Kas")
+            # Bikin grafik sederhana per tanggal
+            chart_data = df_all[['tanggal', 'nominal']].copy()
+            chart_data['tanggal'] = pd.to_datetime(chart_data['tanggal']).dt.date
+            # Group by tanggal biar rapi
+            daily_data = chart_data.groupby('tanggal').sum()
+            # Kumulatif (biar grafiknya naik terus)
+            daily_data['Total Akumulasi'] = daily_data['nominal'].cumsum()
+            
+            st.line_chart(daily_data['Total Akumulasi'])
+            
+        else:
+            st.info("Belum ada uang sepeserpun di database.")
+
+    # 5. GANTI PASSWORD
+    elif menu == "⚙️ Ganti Password":
+        st.title("🔐 Ganti Password")
+        pass_baru = st.text_input("Password Baru", type="password")
+        if st.button("Simpan"):
+            if pass_baru:
+                col_users.update_one({"username": user_now}, {"$set": {"password": pass_baru}})
+                st.success("Password diperbarui!")
+            else:
+                st.warning("Isi dulu passwordnya.")
+
+# --- MAIN LOOP ---
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
