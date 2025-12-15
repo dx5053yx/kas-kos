@@ -113,7 +113,7 @@ def dashboard():
     if menu == "📝 Input Data":
         st.title("📝 Setoran")
         with st.form("form_input"):
-            nominal = st.number_input("Nominal (Rp)", min_value=10000, step=5000)
+            nominal = st.number_input("Nominal (Rp)", min_value=5000, step=5000)
             keterangan = st.text_input("Catatan", placeholder="Bayar apa nich")
             submitted = st.form_submit_button("Kirim Data (bener gak nih🤨🤨)", use_container_width=True)
             
@@ -221,7 +221,8 @@ def dashboard():
                     "Nama": u,
                     "Total Setor": f"Rp {bayar:,.0f}",
                     "Hutang": f"Rp {max(0, hutang):,.0f}",
-                    "Status": status
+                    "Status": status,
+                    "keterangan": keterangan
                 })
             st.dataframe(pd.DataFrame(laporan), use_container_width=True)
             
