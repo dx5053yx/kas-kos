@@ -222,7 +222,6 @@ def dashboard():
                     "Total Setor": f"Rp {bayar:,.0f}",
                     "Hutang": f"Rp {max(0, hutang):,.0f}",
                     "Status": status,
-                    "keterangan": keterangan
                 })
             st.dataframe(pd.DataFrame(laporan), use_container_width=True)
             
