@@ -112,7 +112,6 @@ def dashboard():
     # 1. INPUT PEMBAYARAN (Semua Bisa)
     if menu == "📝 Input Bayar":
         st.title("📝 Setoran")
-        st.text("inpunya yang bener mass, biar datanya gak acak acakan")
         with st.form("form_input"):
             nominal = st.number_input("Nominal (Rp)", min_value=5000, step=5000)
             keterangan = st.text_input("Catatan", placeholder="Bayar apa nich")
