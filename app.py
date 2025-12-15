@@ -105,14 +105,18 @@ def dashboard():
         
         if data_saya:
             df = pd.DataFrame(data_saya)
-            # Hapus kolom yang tidak perlu dilihat user
-            if '_id' in df.columns: df = df.drop(columns=['_id'])
-            
-            total_setor = df['nominal'].sum()
-            st.metric("Total Uang yang Pernah Kamu Setor", f"Rp {total_setor:,.0f}")
-            
-            st.subheader("Rincian:")
-            # Tampilkan tabel
+    
+             # --- TAMBAHAN KODE ANTI ERROR ---
+                # Jika kolom belum ada, kita isi manual dengan strip "-"
+            if 'keterangan' not in df.columns:
+                df['keterangan'] = "-"
+            if 'tanggal' not in df.columns:
+                df['tanggal'] = datetime.now() # Atau tanggal default
+            if 'nominal' not in df.columns:
+                df['nominal'] = 0
+
+
+    #panggil kodenya
             st.dataframe(
                 df[['tanggal', 'nominal', 'keterangan']].sort_values('tanggal', ascending=False),
                 use_container_width=True
