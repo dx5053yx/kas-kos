@@ -1,2 +1,2 @@
 # Aplikasi sistem kas Kos Jasmin
-showcase? comming son (dikarnakan kas mulai semester depan(januari))
+showcase? comming son (dikarnakan kas mulai semester depan(febuari))
